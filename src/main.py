@@ -6,9 +6,9 @@ import os
 import pickle
 from bs4 import BeautifulSoup
 
-from utils.reddit_auth import create_token
-from utils.file_operations import create_folder, get_file_extension
-from config import (
+from src.utils.reddit_auth import create_token
+from src.utils.file_operations import create_folder, get_file_extension
+from src.config import (
     POST_SEARCH_AMOUNT,
     TOKEN_FILE,
     SUB_LIST_FILE,
@@ -55,6 +55,9 @@ def authenticate_reddit(dir_path):
             print("Error: Missing or invalid Reddit credentials")
             print(
                 "Please check your .env file and ensure all Reddit credentials are set."
+            )
+            print(
+                "If you don't have a .env file, copy .env.example to .env and fill in your credentials."
             )
             exit(1)
 

@@ -11,7 +11,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 try:
     from src.utils.file_operations import create_folder, get_file_extension
     from src.utils.reddit_auth import create_token
-    from src.main import authenticate_reddit, download_image
+    from src.main import (
+        authenticate_reddit,
+        download_media,
+        _parse_html_for_media,
+        _get_accept_header,
+        _save_media_file,
+        process_subreddit,
+        main,
+    )
 except ImportError as e:
     raise ImportError(
         "Failed to import modules. Ensure the src directory is structured correctly and accessible."
@@ -44,15 +52,18 @@ class TestFileOperations:
             ("https://example.com/image.PNG", "png"),
             ("https://example.com/image.gif", "gif"),
             ("https://example.com/image.GIF", "gif"),
-            ("https://example.com/unknown.xyz", "xyz"),
-            ("https://example.com/document.pdf", "pdf"),
-            ("https://example.com/archive.tar.gz", "gz"),
+            ("https://example.com/image.mp4", "mp4"),
+            ("https://example.com/video.webm", "webm"),
+            (
+                "https://example.com/unknown.xyz",
+                "jpg",
+            ),  # Fallback for unknown extension
             ("https://example.com/noextension", "jpg"),  # Fallback for no extension
             ("https://example.com/image.", "jpg"),  # Fallback for empty extension
             (
-                "https://example.com/image.longextension",
+                "https://example.com/file?param=value.jpg",
                 "jpg",
-            ),  # Fallback for long extension
+            ),  # URL with query parameters
         ],
     )
     def test_get_file_extension(self, url, expected):
@@ -123,6 +134,136 @@ class TestRedditAuth:
             create_token()
 
 
+class TestHelperFunctions:
+    """Test helper functions in main module."""
+
+    @pytest.mark.parametrize(
+        "file_extension,media_url,expected_header",
+        [
+            ("mp4", "https://example.com/video.mp4", "video/*, */*"),
+            ("webm", "https://example.com/video.webm", "video/*, */*"),
+            ("gif", "https://example.com/image.gif", "image/gif, image/*"),
+            ("jpg", "https://example.com/image.jpg", "image/*"),
+            ("png", "https://example.com/image.png", "image/*"),
+            (
+                "jpg",
+                "https://example.com/video.mp4",
+                "video/*, */*",
+            ),  # URL overrides extension
+        ],
+    )
+    def test_get_accept_header(self, file_extension, media_url, expected_header):
+        """Test Accept header generation for different media types."""
+        result = _get_accept_header(file_extension, media_url)
+        assert result == expected_header
+
+    @patch("builtins.open", new_callable=mock_open)
+    def test_save_media_file_success(self, mock_file):
+        """Test successful media file saving."""
+        content = b"fake_media_data"
+        result = _save_media_file(
+            content, "/test/path/", "testsubreddit", "id123", "jpg"
+        )
+
+        assert result is True
+        mock_file.assert_called_once_with("/test/path/testsubreddit-id123.jpg", "wb")
+
+    def test_save_media_file_empty_content(self):
+        """Test media file saving with empty content."""
+        result = _save_media_file(b"", "/test/path/", "testsubreddit", "id123", "jpg")
+        assert result is False
+
+    def test_save_media_file_none_content(self):
+        """Test media file saving with None content."""
+        result = _save_media_file(None, "/test/path/", "testsubreddit", "id123", "jpg")
+        assert result is False
+
+    @patch("src.main.requests.get")
+    @patch("src.main.BeautifulSoup")
+    def test_parse_html_for_media_og_video(self, mock_soup, mock_requests):
+        """Test HTML parsing for og:video meta tag."""
+        mock_response = MagicMock()
+        mock_response.content = b"<html></html>"
+        mock_response.raise_for_status.return_value = None
+        mock_requests.return_value = mock_response
+
+        mock_soup_instance = MagicMock()
+        mock_soup.return_value = mock_soup_instance
+
+        mock_video_tag = MagicMock()
+        mock_video_tag.get.return_value = "https://example.com/video.mp4"
+        mock_soup_instance.find.side_effect = lambda tag, attrs=None, **kwargs: (
+            mock_video_tag if kwargs.get("property") == "og:video" else None
+        )
+
+        result = _parse_html_for_media(
+            "https://example.com/page", {"User-Agent": "test"}
+        )
+
+        assert result == ("https://example.com/video.mp4", "mp4")
+
+    @patch("src.main.requests.get")
+    @patch("src.main.BeautifulSoup")
+    def test_parse_html_for_media_og_image(self, mock_soup, mock_requests):
+        """Test HTML parsing for og:image meta tag."""
+        mock_response = MagicMock()
+        mock_response.content = b"<html></html>"
+        mock_response.raise_for_status.return_value = None
+        mock_requests.return_value = mock_response
+
+        mock_soup_instance = MagicMock()
+        mock_soup.return_value = mock_soup_instance
+
+        mock_image_tag = MagicMock()
+        mock_image_tag.get.return_value = "https://example.com/image.jpg"
+
+        def find_side_effect(tag, attrs=None, **kwargs):
+            property_value = kwargs.get("property")
+            if property_value == "og:video":
+                return None
+            elif property_value == "og:image":
+                return mock_image_tag
+            return None
+
+        mock_soup_instance.find.side_effect = find_side_effect
+
+        result = _parse_html_for_media(
+            "https://example.com/page", {"User-Agent": "test"}
+        )
+
+        assert result == ("https://example.com/image.jpg", None)
+
+    @patch("src.main.requests.get")
+    def test_parse_html_for_media_network_error(self, mock_requests):
+        """Test HTML parsing with network error."""
+        mock_requests.side_effect = Exception("Network error")
+
+        result = _parse_html_for_media(
+            "https://example.com/page", {"User-Agent": "test"}
+        )
+
+        assert result == (None, None)
+
+    @patch("src.main.requests.get")
+    @patch("src.main.BeautifulSoup")
+    def test_parse_html_for_media_no_og_tags(self, mock_soup, mock_requests):
+        """Test HTML parsing when no og:video or og:image tags are found."""
+        mock_response = MagicMock()
+        mock_response.content = b"<html></html>"
+        mock_response.raise_for_status.return_value = None
+        mock_requests.return_value = mock_response
+
+        mock_soup_instance = MagicMock()
+        mock_soup.return_value = mock_soup_instance
+        mock_soup_instance.find.return_value = None
+
+        result = _parse_html_for_media(
+            "https://example.com/page", {"User-Agent": "test"}
+        )
+
+        assert result == (None, None)
+
+
 class TestMainFunctionality:
     """Test main application functionality."""
 
@@ -148,6 +289,7 @@ class TestMainFunctionality:
         mock_exists.return_value = True
         mock_pickle_load.return_value = mock_credentials
         mock_reddit_instance = MagicMock()
+        mock_reddit_instance.user.me.return_value = None
         mock_reddit.return_value = mock_reddit_instance
 
         reddit, creds = authenticate_reddit("/test/path")
@@ -182,6 +324,7 @@ class TestMainFunctionality:
         mock_exists.return_value = False
         mock_create_token.return_value = mock_credentials
         mock_reddit_instance = MagicMock()
+        mock_reddit_instance.user.me.return_value = None
         mock_reddit.return_value = mock_reddit_instance
 
         reddit, creds = authenticate_reddit("/test/path")
@@ -191,107 +334,200 @@ class TestMainFunctionality:
         assert reddit == mock_reddit_instance
         assert creds == mock_credentials
 
-    @pytest.mark.parametrize(
-        "url, content_type_header, expected_extension, submission_id",
-        [
-            # Standard case: URL has extension, Content-Type matches
-            ("https://example.com/image.jpg", "image/jpeg", "jpg", "id001"),
-            ("https://example.com/image.png", "image/png", "png", "id002"),
-            ("https://example.com/image.gif", "image/gif", "gif", "id003"),
-            # Content-Type dictates extension when URL has no extension
-            ("https://example.com/image_no_ext", "image/gif", "gif", "id004"),
-            ("https://example.com/another_no_ext", "image/jpeg", "jpg", "id005"),
-            # Content-Type overrides URL extension if different and recognized
-            ("https://example.com/image_wrong.jpg", "image/png", "png", "id006"),
-            # Fallback: URL has extension, Content-Type missing/unrecognized
-            ("https://example.com/image_fallback.gif", None, "gif", "id007"),
-            ("https://example.com/image_fallback.png", "text/html", "png", "id008"),
-            # Fallback: URL no extension, Content-Type missing/unrecognized (defaults to jpg via get_file_extension)
-            ("https://example.com/image_total_fallback", None, "jpg", "id009"),
-            (
-                "https://example.com/image_another_fallback",
-                "application/json",
-                "jpg",
-                "id010",
-            ),
-            # Test Content-Type with parameters (e.g., image/jpeg; charset=UTF-8)
-            (
-                "https://example.com/image_charset.jpg",
-                "image/jpeg; charset=UTF-8",
-                "jpg",
-                "id011",
-            ),
-        ],
-    )
-    @patch("src.main.requests.get")
+    @patch("src.main.praw.Reddit")
+    @patch("src.main.pickle.load")
     @patch("builtins.open", new_callable=mock_open)
-    def test_download_image_logic(
-        self,
-        mock_file,
-        mock_requests_get,
-        mock_credentials,
-        url,
-        content_type_header,
-        expected_extension,
-        submission_id,
+    @patch("src.main.os.path.exists")
+    def test_authenticate_reddit_invalid_credentials(
+        self, mock_exists, mock_file, mock_pickle_load, mock_reddit
     ):
-        """Test image download logic with various Content-Type and URL scenarios."""
+        """Test authentication with invalid credentials."""
+        mock_exists.return_value = True
+        mock_pickle_load.return_value = {}  # Empty credentials
+
+        with pytest.raises(SystemExit):
+            authenticate_reddit("/test/path")
+
+    @patch("src.main.praw.Reddit")
+    @patch("src.main.pickle.load")
+    @patch("builtins.open", new_callable=mock_open)
+    @patch("src.main.os.path.exists")
+    def test_authenticate_reddit_authentication_failure(
+        self, mock_exists, mock_file, mock_pickle_load, mock_reddit, mock_credentials
+    ):
+        """Test authentication failure during Reddit connection."""
+        mock_exists.return_value = True
+        mock_pickle_load.return_value = mock_credentials
+        mock_reddit_instance = MagicMock()
+        mock_reddit_instance.user.me.side_effect = Exception("Authentication failed")
+        mock_reddit.return_value = mock_reddit_instance
+
+        with pytest.raises(SystemExit):
+            authenticate_reddit("/test/path")
+
+    @patch("src.main._save_media_file")
+    @patch("src.main.get_file_extension")
+    @patch("src.main._get_accept_header")
+    @patch("src.main.requests.get")
+    def test_download_media_direct_url_success(
+        self,
+        mock_requests,
+        mock_get_accept_header,
+        mock_get_extension,
+        mock_save_file,
+        mock_credentials,
+    ):
+        """Test successful media download from direct URL."""
         mock_submission = MagicMock()
-        mock_submission.url = url
-        mock_submission.id = submission_id
+        mock_submission.url = "https://example.com/image.jpg"
+        mock_submission.id = "test123"
 
         mock_response = MagicMock()
         mock_response.content = b"fake_image_data"
         mock_response.raise_for_status.return_value = None
-        mock_response.headers = (
-            {"Content-Type": content_type_header} if content_type_header else {}
-        )
-        mock_requests_get.return_value = mock_response
+        mock_requests.return_value = mock_response
 
-        result = download_image(
-            mock_submission, mock_credentials, "/test/path/", "testsubreddit"
+        mock_get_extension.return_value = "jpg"
+        mock_get_accept_header.return_value = "image/*"
+        mock_save_file.return_value = True
+
+        result = download_media(
+            mock_submission, mock_credentials, "/test/path/", "testsubreddit", True
         )
 
         assert result is True
-        mock_requests_get.assert_called_once_with(
-            url,
-            headers={"User-Agent": "test_agent", "Accept": "image/*"},
-            timeout=30,
-        )
-        expected_filename = (
-            f"/test/path/testsubreddit-{submission_id}.{expected_extension}"
-        )
-        mock_file.assert_called_once_with(expected_filename, "wb")
+        mock_requests.assert_called_once()
+        mock_save_file.assert_called_once()
 
+    @patch("src.main._parse_html_for_media")
+    @patch("src.main._save_media_file")
+    @patch("src.main.get_file_extension")
+    @patch("src.main._get_accept_header")
     @patch("src.main.requests.get")
-    def test_download_image_network_error(self, mock_requests_get, mock_credentials):
-        """Test image download with network error."""
+    def test_download_media_indirect_url_success(
+        self,
+        mock_requests,
+        mock_get_accept_header,
+        mock_get_extension,
+        mock_save_file,
+        mock_parse_html,
+        mock_credentials,
+    ):
+        """Test successful media download from indirect URL (HTML parsing)."""
         mock_submission = MagicMock()
-        mock_submission.url = "https://example.com/image.jpg"
+        mock_submission.url = "https://example.com/page"
         mock_submission.id = "test123"
 
-        mock_requests_get.side_effect = Exception("Network error")
-
-        result = download_image(
-            mock_submission, mock_credentials, "/test/path/", "testsubreddit"
-        )
-
-        assert result is False
-
-    @patch("src.main.requests.get")
-    def test_download_image_empty_content(self, mock_requests_get, mock_credentials):
-        """Test image download with empty response content."""
-        mock_submission = MagicMock()
-        mock_submission.url = "https://example.com/image.jpg"
-        mock_submission.id = "test123"
+        mock_parse_html.return_value = ("https://example.com/video.mp4", "mp4")
 
         mock_response = MagicMock()
-        mock_response.content = b""
+        mock_response.content = b"fake_video_data"
         mock_response.raise_for_status.return_value = None
-        mock_requests_get.return_value = mock_response
+        mock_requests.return_value = mock_response
 
-        result = download_image(
-            mock_submission, mock_credentials, "/test/path/", "testsubreddit"
+        mock_get_extension.return_value = (
+            "mp4"  # Won't be called since extension is from HTML
+        )
+        mock_get_accept_header.return_value = "video/*, */*"
+        mock_save_file.return_value = True
+
+        result = download_media(
+            mock_submission, mock_credentials, "/test/path/", "testsubreddit", False
+        )
+
+        assert result is True
+        mock_parse_html.assert_called_once()
+        mock_save_file.assert_called_once()
+
+    @patch("src.main._parse_html_for_media")
+    def test_download_media_indirect_url_no_media_found(
+        self, mock_parse_html, mock_credentials
+    ):
+        """Test media download when no media found in HTML."""
+        mock_submission = MagicMock()
+        mock_submission.url = "https://example.com/page"
+        mock_submission.id = "test123"
+
+        mock_parse_html.return_value = (None, None)
+
+        result = download_media(
+            mock_submission, mock_credentials, "/test/path/", "testsubreddit", False
         )
 
         assert result is False
+
+    @patch("src.main.requests.get")
+    def test_download_media_network_error(self, mock_requests, mock_credentials):
+        """Test media download with network error."""
+        mock_submission = MagicMock()
+        mock_submission.url = "https://example.com/image.jpg"
+        mock_submission.id = "test123"
+
+        mock_requests.side_effect = Exception("Network error")
+
+        result = download_media(
+            mock_submission, mock_credentials, "/test/path/", "testsubreddit", True
+        )
+
+        assert result is False
+
+    @patch("src.main.download_media")
+    @patch("src.main.get_file_extension")
+    def test_process_subreddit(
+        self, mock_get_extension, mock_download_media, mock_credentials
+    ):
+        """Test processing a subreddit."""
+        mock_reddit = MagicMock()
+        mock_subreddit = MagicMock()
+        mock_reddit.subreddit.return_value = mock_subreddit
+
+        # Create mock submissions
+        mock_submission1 = MagicMock()
+        mock_submission1.url = "https://example.com/image1.jpg"
+        mock_submission1.id = "id1"
+
+        mock_submission2 = MagicMock()
+        mock_submission2.url = "https://example.com/image2.png"
+        mock_submission2.id = "id2"
+
+        mock_submission3 = MagicMock()
+        mock_submission3.url = "https://example.com/image3.gif"
+        mock_submission3.id = "id3"
+
+        mock_subreddit.new.return_value = [
+            mock_submission1,
+            mock_submission2,
+            mock_submission3,
+        ]
+        mock_download_media.side_effect = [True, True, True]
+        mock_get_extension.side_effect = ["jpg", "png", "gif"]
+
+        # Mock the print function to avoid output during tests
+        with patch("builtins.print"):
+            process_subreddit(
+                mock_reddit, mock_credentials, "testsubreddit", "/test/path/"
+            )
+
+        assert mock_download_media.call_count == 3
+
+    @patch("src.main.process_subreddit")
+    @patch("src.main.authenticate_reddit")
+    @patch("src.main.create_folder")
+    @patch("builtins.open", new_callable=mock_open, read_data="testsubreddit\nfood\n")
+    def test_main_function(
+        self,
+        mock_file,
+        mock_create_folder,
+        mock_authenticate_reddit,
+        mock_process_subreddit,
+        mock_credentials,
+    ):
+        """Test main function execution."""
+        mock_reddit = MagicMock()
+        mock_authenticate_reddit.return_value = (mock_reddit, mock_credentials)
+
+        main()
+
+        mock_create_folder.assert_called_once()
+        mock_authenticate_reddit.assert_called_once()
+        assert mock_process_subreddit.call_count == 2  # Two subreddits in CSV
