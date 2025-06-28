@@ -1,0 +1,65 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "reddit-image-scraper"
+version = "1.0.0"
+authors = [
+    {name = "AJ Barea", email = "ajbareaa@gmail.com"},
+]
+description = "A Python application for downloading images from Reddit subreddits"
+readme = "docs/README.md"
+requires-python = ">=3.8"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+    "certifi>=2023.11.17",
+    "chardet>=5.2.0",
+    "idna>=3.6",
+    "numpy>=1.26.0",
+    "opencv-python>=4.8.0",
+    "praw>=7.7.0",
+    "prawcore>=2.4.0",
+    "python-dotenv>=1.0.0",
+    "requests>=2.31.0",
+    "six>=1.16.0",
+    "update-checker>=0.18.0",
+    "urllib3>=2.0.0",
+    "websocket-client>=1.6.0",
+    "stdiomask>=0.0.6",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/yourusername/reddit-image-scraper"
+"Bug Reports" = "https://github.com/yourusername/reddit-image-scraper/issues"
+"Source" = "https://github.com/yourusername/reddit-image-scraper"
+
+[project.scripts]
+reddit-scraper = "src.main:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+
+[tool.flake8]
+max-line-length = 88
+extend-ignore = ["E203", "E501", "F401"]
