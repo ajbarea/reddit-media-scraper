@@ -44,7 +44,8 @@ pip install -r requirements.txt
 Run from the src directory:
 
 ```bash
-python src/main.py
+cd src
+python main.py
 ```
 
 - Add any subs you want to download to the data/subreddits.csv one per line.

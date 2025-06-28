@@ -5,9 +5,9 @@ import requests
 import os
 import pickle
 
-from src.utils.reddit_auth import create_token
-from src.utils.file_operations import create_folder, get_file_extension
-from src.config import (
+from utils.reddit_auth import create_token
+from utils.file_operations import create_folder, get_file_extension
+from config import (
     POST_SEARCH_AMOUNT,
     TOKEN_FILE,
     SUB_LIST_FILE,
