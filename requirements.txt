@@ -9,5 +9,6 @@ six>=1.16.0
 update-checker>=0.18.0
 urllib3>=2.0.0
 websocket-client>=1.6.0
+beautifulsoup4>=4.12.2
 pytest>=7.0.0
 pytest-mock>=3.10.0

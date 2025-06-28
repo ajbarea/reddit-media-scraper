@@ -21,11 +21,19 @@ def get_file_extension(url):
     Returns:
         str: File extension (jpg, png, or default jpg)
     """
-    url_lower = url.lower()
-    if ".jpg" in url_lower or ".jpeg" in url_lower:
-        return "jpg"
-    elif ".png" in url_lower:
-        return "png"
-    else:
-        # Default to jpg if we can't determine
-        return "jpg"
+    # Extract the part of the URL after the last slash
+    filename_part = url.split("/")[-1]
+    # Remove query parameters from the filename part before splitting by '.'
+    filename_part = filename_part.split("?")[0]
+
+    parts = filename_part.split(".")
+    if len(parts) > 1:
+        ext = parts[-1].lower()
+        if ext == "jpeg":
+            return "jpg"  # Standardize jpeg to jpg
+        if ext in ["jpg", "png", "gif", "mp4", "webm"]:
+            return ext
+
+    # Default to jpg if no common extension is found or if there's no explicit extension.
+    # The calling function (download_media) has more context if URL was from an <og:video> tag.
+    return "jpg"

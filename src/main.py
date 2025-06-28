@@ -4,6 +4,7 @@ import praw
 import requests
 import os
 import pickle
+from bs4 import BeautifulSoup
 
 from utils.reddit_auth import create_token
 from utils.file_operations import create_folder, get_file_extension
@@ -14,7 +15,7 @@ from config import (
     IMAGES_FOLDER,
     SUBREDDIT_LIMIT,
     SAFETY_LIMIT,
-    SUPPORTED_IMAGE_FORMATS,
+    SUPPORTED_MEDIA_FORMATS,
 )
 
 
@@ -81,69 +82,161 @@ def authenticate_reddit(dir_path):
         exit(1)
 
 
-def download_image(submission, creds, image_path, sub):
-    """Download a single image from a Reddit submission.
+def _parse_html_for_media(url, headers):
+    """Parse HTML page for og:video or og:image meta tags.
+
+    Args:
+        url (str): URL to parse
+        headers (dict): Request headers
+
+    Returns:
+        tuple: (media_url, file_extension) or (None, None) if not found
+    """
+    try:
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        og_video_tag = soup.find("meta", property="og:video")
+        og_image_tag = soup.find("meta", property="og:image")
+
+        if og_video_tag:
+            try:
+                content = og_video_tag.get("content")
+                if content:
+                    return str(content), "mp4"
+            except (AttributeError, TypeError):
+                pass
+
+        if og_image_tag:
+            try:
+                content = og_image_tag.get("content")
+                if content:
+                    return str(content), None
+            except (AttributeError, TypeError):
+                pass
+        else:
+            return None, None
+    except (requests.exceptions.RequestException, Exception):
+        return None, None
+
+
+def _get_accept_header(file_extension, media_url):
+    """Get appropriate Accept header based on file extension and URL.
+
+    Args:
+        file_extension (str): File extension
+        media_url (str): Media URL
+
+    Returns:
+        str: Accept header value
+    """
+    media_url_lower = media_url.lower()
+
+    if (
+        file_extension == "mp4"
+        or ".mp4" in media_url_lower
+        or file_extension == "webm"
+        or ".webm" in media_url_lower
+    ):
+        return "video/*, */*"
+    elif file_extension == "gif" or ".gif" in media_url_lower:
+        return "image/gif, image/*"
+    else:
+        return "image/*"
+
+
+def _save_media_file(content, media_path, sub, submission_id, file_extension):
+    """Save media content to file.
+
+    Args:
+        content (bytes): Media content
+        media_path (str): Base path for media files
+        sub (str): Subreddit name
+        submission_id (str): Submission ID
+        file_extension (str): File extension
+
+    Returns:
+        bool: True if saved successfully, False otherwise
+    """
+    if not content or len(content) == 0:
+        return False
+
+    try:
+        filename = f"{media_path}{sub}-{submission_id}.{file_extension}"
+        with open(filename, "wb") as f:
+            f.write(content)
+        return True
+    except Exception:
+        return False
+
+
+def download_media(submission, creds, media_path, sub, is_direct_media):
+    """Download a single media item from a Reddit submission.
+    If not a direct media link, attempts to parse HTML for og:video or og:image tags.
 
     Args:
         submission: Reddit submission object
         creds (dict): Reddit API credentials
-        image_path (str): Path to save images
+        media_path (str): Path to save media
         sub (str): Subreddit name
+        is_direct_media (bool): True if the URL is identified as a direct media link.
 
     Returns:
-        bool: True if image was downloaded successfully, False otherwise
+        bool: True if media was downloaded successfully, False otherwise
     """
-    try:
-        # Use proper headers for downloading Reddit images
-        headers = {"User-Agent": creds["user_agent"], "Accept": "image/*"}
+    original_url = submission.url
+    media_url_to_download = original_url
+    file_extension = None
 
-        # Download image with proper error handling
-        response = requests.get(submission.url, headers=headers, timeout=30)
-        response.raise_for_status()  # Raise an exception for bad status codes
+    headers = {"User-Agent": creds["user_agent"]}
 
-        if response.content and len(response.content) > 0:
-            # Determine file extension from URL
-            file_extension = get_file_extension(submission.url)
-
-            # Save the raw image data directly without processing
-            filename = f"{image_path}{sub}-{submission.id}.{file_extension}"
-
-            with open(filename, "wb") as f:
-                f.write(response.content)
-
-            print(f"data/downloads/{submission.id}.{file_extension}")
-            return True
-        else:
-            print(f"  Empty response content: {submission.url}")
+    # Handle non-direct media URLs by parsing HTML
+    if not is_direct_media:
+        result = _parse_html_for_media(original_url, headers)
+        if result == (None, None):
             return False
+        media_url_to_download, file_extension = result
 
-    except requests.exceptions.RequestException as e:
-        print(f"  Network error downloading {submission.url}: {e}")
+    # Determine file extension if not already set
+    if not file_extension:
+        file_extension = get_file_extension(media_url_to_download)
+
+    # Set appropriate Accept header
+    headers["Accept"] = _get_accept_header(file_extension, media_url_to_download)
+
+    # Download the media content
+    try:
+        response = requests.get(media_url_to_download, headers=headers, timeout=30)
+        response.raise_for_status()
+
+        return _save_media_file(
+            response.content, media_path, sub, submission.id, file_extension
+        )
+
+    except (requests.exceptions.RequestException, Exception):
         return False
-    except Exception as e:
-        print(f"  Unexpected error with {submission.url}: {e}")
-        return False
 
 
-def process_subreddit(reddit, creds, sub, image_path):
-    """Process a single subreddit and download images.
+def process_subreddit(reddit, creds, sub, media_path):
+    """Process a single subreddit and download media.
 
     Args:
         reddit: Authenticated Reddit instance
         creds (dict): Reddit API credentials
         sub (str): Subreddit name
-        image_path (str): Path to save images
+        media_path (str): Path to save media
     """
     subreddit = reddit.subreddit(sub)
-    print(f"\nDownloading images from r/{sub}...")
+    print(f"\nDownloading media from r/{sub}...")
     count = 0
     posts_checked = 0
 
-    # Keep searching until we find POST_SEARCH_AMOUNT images
+    # Keep searching until we find POST_SEARCH_AMOUNT media items
     for submission in subreddit.new(limit=SUBREDDIT_LIMIT):
         posts_checked += 1
 
-        # Break if we've found enough images
+        # Break if we've found enough media items
         if count >= POST_SEARCH_AMOUNT:
             break
 
@@ -152,15 +245,18 @@ def process_subreddit(reddit, creds, sub, image_path):
             print(f"  Reached safety limit of {SAFETY_LIMIT} posts checked")
             break
 
-        # Check if URL contains supported image formats
         url_lower = submission.url.lower()
-        if any(fmt in url_lower for fmt in SUPPORTED_IMAGE_FORMATS):
-            print(f"  [{count + 1}/{POST_SEARCH_AMOUNT}] {submission.url}", end=" -> ")
+        is_direct_media = any(f".{fmt}" in url_lower for fmt in SUPPORTED_MEDIA_FORMATS)
 
-            if download_image(submission, creds, image_path, sub):
-                count += 1
+        # Try to download media (direct or parse HTML for indirect)
+        if download_media(submission, creds, media_path, sub, is_direct_media):
+            filename = f"{sub}-{submission.id}.{get_file_extension(submission.url)}"
+            print(
+                f"  [{count + 1}/{POST_SEARCH_AMOUNT}] {submission.url} -> data/downloads/{filename}"
+            )
+            count += 1
 
-    print(f"✔️  Complete: saved {count} images (scanned {posts_checked} posts)")
+    print(f"✔️  Complete: saved {count} media items (scanned {posts_checked} posts)")
 
 
 def main():

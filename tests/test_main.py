@@ -2,10 +2,20 @@
 
 import pytest
 from unittest.mock import patch, MagicMock, mock_open
+import sys
+import os
 
-from src.utils.file_operations import create_folder, get_file_extension
-from src.utils.reddit_auth import create_token
-from src.main import authenticate_reddit, download_image
+# Add project root to sys.path to allow importing src modules
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
+try:
+    from src.utils.file_operations import create_folder, get_file_extension
+    from src.utils.reddit_auth import create_token
+    from src.main import authenticate_reddit, download_image
+except ImportError as e:
+    raise ImportError(
+        "Failed to import modules. Ensure the src directory is structured correctly and accessible."
+    ) from e
 
 
 class TestFileOperations:
@@ -32,8 +42,17 @@ class TestFileOperations:
             ("https://example.com/image.JPEG", "jpg"),
             ("https://example.com/image.png", "png"),
             ("https://example.com/image.PNG", "png"),
-            ("https://example.com/unknown.xyz", "jpg"),
-            ("https://example.com/noextension", "jpg"),
+            ("https://example.com/image.gif", "gif"),
+            ("https://example.com/image.GIF", "gif"),
+            ("https://example.com/unknown.xyz", "xyz"),
+            ("https://example.com/document.pdf", "pdf"),
+            ("https://example.com/archive.tar.gz", "gz"),
+            ("https://example.com/noextension", "jpg"),  # Fallback for no extension
+            ("https://example.com/image.", "jpg"),  # Fallback for empty extension
+            (
+                "https://example.com/image.longextension",
+                "jpg",
+            ),  # Fallback for long extension
         ],
     )
     def test_get_file_extension(self, url, expected):
@@ -172,19 +191,61 @@ class TestMainFunctionality:
         assert reddit == mock_reddit_instance
         assert creds == mock_credentials
 
+    @pytest.mark.parametrize(
+        "url, content_type_header, expected_extension, submission_id",
+        [
+            # Standard case: URL has extension, Content-Type matches
+            ("https://example.com/image.jpg", "image/jpeg", "jpg", "id001"),
+            ("https://example.com/image.png", "image/png", "png", "id002"),
+            ("https://example.com/image.gif", "image/gif", "gif", "id003"),
+            # Content-Type dictates extension when URL has no extension
+            ("https://example.com/image_no_ext", "image/gif", "gif", "id004"),
+            ("https://example.com/another_no_ext", "image/jpeg", "jpg", "id005"),
+            # Content-Type overrides URL extension if different and recognized
+            ("https://example.com/image_wrong.jpg", "image/png", "png", "id006"),
+            # Fallback: URL has extension, Content-Type missing/unrecognized
+            ("https://example.com/image_fallback.gif", None, "gif", "id007"),
+            ("https://example.com/image_fallback.png", "text/html", "png", "id008"),
+            # Fallback: URL no extension, Content-Type missing/unrecognized (defaults to jpg via get_file_extension)
+            ("https://example.com/image_total_fallback", None, "jpg", "id009"),
+            (
+                "https://example.com/image_another_fallback",
+                "application/json",
+                "jpg",
+                "id010",
+            ),
+            # Test Content-Type with parameters (e.g., image/jpeg; charset=UTF-8)
+            (
+                "https://example.com/image_charset.jpg",
+                "image/jpeg; charset=UTF-8",
+                "jpg",
+                "id011",
+            ),
+        ],
+    )
     @patch("src.main.requests.get")
     @patch("builtins.open", new_callable=mock_open)
-    def test_download_image_success(
-        self, mock_file, mock_requests_get, mock_credentials
+    def test_download_image_logic(
+        self,
+        mock_file,
+        mock_requests_get,
+        mock_credentials,
+        url,
+        content_type_header,
+        expected_extension,
+        submission_id,
     ):
-        """Test successful image download."""
+        """Test image download logic with various Content-Type and URL scenarios."""
         mock_submission = MagicMock()
-        mock_submission.url = "https://example.com/image.jpg"
-        mock_submission.id = "test123"
+        mock_submission.url = url
+        mock_submission.id = submission_id
 
         mock_response = MagicMock()
         mock_response.content = b"fake_image_data"
         mock_response.raise_for_status.return_value = None
+        mock_response.headers = (
+            {"Content-Type": content_type_header} if content_type_header else {}
+        )
         mock_requests_get.return_value = mock_response
 
         result = download_image(
@@ -193,11 +254,14 @@ class TestMainFunctionality:
 
         assert result is True
         mock_requests_get.assert_called_once_with(
-            "https://example.com/image.jpg",
+            url,
             headers={"User-Agent": "test_agent", "Accept": "image/*"},
             timeout=30,
         )
-        mock_file.assert_called_once_with("/test/path/testsubreddit-test123.jpg", "wb")
+        expected_filename = (
+            f"/test/path/testsubreddit-{submission_id}.{expected_extension}"
+        )
+        mock_file.assert_called_once_with(expected_filename, "wb")
 
     @patch("src.main.requests.get")
     def test_download_image_network_error(self, mock_requests_get, mock_credentials):
