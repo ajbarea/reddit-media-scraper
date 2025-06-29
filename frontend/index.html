@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Reddit Media Scraper</title>
+    <!-- AWS SDK for JavaScript -->
+    <script src="https://sdk.amazonaws.com/js/aws-sdk-2.1691.0.min.js"></script>
+</head>
+
+<body style="
+      font-family: sans-serif;
+      max-width: 400px;
+      margin: 2rem auto;
+      text-align: center;
+    ">
+    <h2>Upload an Image</h2>
+    <input type="file" id="fileInput" accept="image/*" />
+    <br /><br />
+    <button id="uploadBtn" disabled>Upload to S3</button>
+    <p id="status" style="color: green"></p>
+
+    <script>
+        // Debug function to log messages
+        function debugLog(message, data = null) {
+            console.log(`[DEBUG] ${message}`, data);
+            const statusTxt = document.getElementById("status");
+            if (statusTxt) {
+                statusTxt.innerHTML += `<br><small style="color: blue;">[DEBUG] ${message}</small>`;
+            }
+        }
+
+        // Check if AWS SDK loaded properly
+        if (typeof AWS === 'undefined') {
+            debugLog("ERROR: AWS SDK failed to load!");
+        } else {
+            debugLog("AWS SDK loaded successfully");
+        }
+
+        // Configure Amplify with your AWS details
+        try {
+            AWS.config.region = "us-east-1";
+            AWS.config.credentials = new AWS.CognitoIdentityCredentials({
+                IdentityPoolId: "us-east-1:9d2be0b3-5939-467a-a17e-2e41e907f535",
+            });
+            debugLog("AWS configuration set successfully");
+        } catch (error) {
+            debugLog("ERROR configuring AWS:", error);
+        }
+
+        // Grab UI elements
+        const fileInput = document.getElementById("fileInput");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const statusTxt = document.getElementById("status");
+
+        if (!fileInput || !uploadBtn || !statusTxt) {
+            debugLog("ERROR: Could not find required DOM elements");
+        } else {
+            debugLog("DOM elements found successfully");
+        }
+
+        let selectedFile = null;
+
+        // Add event listener
+        if (fileInput) {
+            fileInput.addEventListener("change", (e) => {
+                debugLog("File input change event triggered");
+
+                const files = e.target.files;
+                debugLog(`Number of files selected: ${files.length}`);
+
+                if (files.length > 0) {
+                    selectedFile = files[0];
+                    debugLog(`Selected file:`, {
+                        name: selectedFile.name,
+                        size: selectedFile.size,
+                        type: selectedFile.type,
+                        lastModified: selectedFile.lastModified
+                    });
+
+                    // Enable the upload button
+                    uploadBtn.disabled = false;
+                    debugLog("Upload button enabled");
+                } else {
+                    selectedFile = null;
+                    uploadBtn.disabled = true;
+                    debugLog("No file selected, upload button disabled");
+                }
+
+                // Clear previous status messages (but keep debug info)
+                const debugMessages = statusTxt.innerHTML.match(/<br><small style="color: blue;">.*?<\/small>/g) || [];
+                statusTxt.innerHTML = debugMessages.join('');
+            });
+
+            debugLog("File input event listener attached");
+        }
+
+        uploadBtn.addEventListener("click", async () => {
+            debugLog("Upload button clicked");
+
+            if (!selectedFile) {
+                debugLog("ERROR: No file selected when upload button clicked");
+                return;
+            }
+
+            debugLog("Starting upload process...");
+            uploadBtn.disabled = true;
+            statusTxt.style.color = "black";
+            statusTxt.textContent = "Uploading…";
+
+            try {
+                // Use AWS SDK S3 client
+                debugLog("Creating S3 client...");
+                const s3 = new AWS.S3({
+                    apiVersion: "2006-03-01",
+                    params: { Bucket: "ajbarea" },
+                });
+
+                const key = `${Date.now()}_${selectedFile.name}`;
+                debugLog(`Upload key: ${key}`);
+
+                debugLog("Starting S3 upload...");
+
+                // Use putObject directly to avoid any ACL issues
+                const uploadParams = {
+                    Bucket: "ajbarea",
+                    Key: key,
+                    Body: selectedFile,
+                    ContentType: selectedFile.type,
+                    // Explicitly exclude any ACL parameters
+                };
+
+                // Simple progress tracking
+                statusTxt.textContent = "Uploading...";
+                debugLog("Upload progress: Starting...");
+
+                // Use putObject directly
+                s3.putObject(uploadParams, (err, data) => {
+                    if (err) {
+                        console.error("Upload error:", err);
+                        debugLog("Upload failed:", err);
+                        statusTxt.style.color = "red";
+                        statusTxt.textContent = `Upload failed: ${err.message || err}`;
+                    } else {
+                        debugLog("Upload successful:", data);
+                        statusTxt.style.color = "green";
+                        const fileUrl = `https://ajbarea.s3.amazonaws.com/${key}`;
+                        statusTxt.innerHTML = `Uploaded!<br/><a href="${fileUrl}" target="_blank">View Image</a>`;
+                    }
+                    uploadBtn.disabled = false;
+                });
+            } catch (error) {
+                debugLog("ERROR in upload process:", error);
+                statusTxt.style.color = "red";
+                statusTxt.textContent = `Error: ${error.message}`;
+                uploadBtn.disabled = false;
+            }
+        });
+
+        // Add page load debug info
+        window.addEventListener('DOMContentLoaded', () => {
+            debugLog("DOM Content Loaded");
+        });
+
+        window.addEventListener('load', () => {
+            debugLog("Page fully loaded");
+        });
+    </script>
+</body>
+
+</html>
+<!-- This HTML file provides a simple interface to upload images to an AWS S3 bucket using the AWS Amplify library. -->
+<!-- Make sure to replace the placeholders with your actual AWS configuration details. -->

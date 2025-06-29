@@ -1,10 +1,12 @@
 """Main Reddit Image Scraper application."""
 
 import praw
+import praw.models
 import requests
 import os
 import pickle
-from bs4 import BeautifulSoup
+from typing import Dict, Tuple, Optional
+from bs4 import BeautifulSoup, Tag
 
 from src.utils.reddit_auth import create_token
 from src.utils.file_operations import create_folder, get_file_extension
@@ -19,14 +21,14 @@ from src.config import (
 )
 
 
-def authenticate_reddit(dir_path):
+def authenticate_reddit(dir_path: str) -> Tuple[praw.Reddit, Dict[str, str]]:
     """Authenticate with Reddit API.
 
     Args:
-        dir_path (str): Project root directory path
+        dir_path: Project root directory path
 
     Returns:
-        praw.Reddit: Authenticated Reddit instance
+        Tuple of authenticated Reddit instance and credentials
     """
     # Get token file to log into reddit
     token_path = os.path.join(dir_path, TOKEN_FILE)
@@ -85,15 +87,17 @@ def authenticate_reddit(dir_path):
         exit(1)
 
 
-def _parse_html_for_media(url, headers):
+def _parse_html_for_media(
+    url: str, headers: Dict[str, str]
+) -> Tuple[Optional[str], Optional[str]]:
     """Parse HTML page for og:video or og:image meta tags.
 
     Args:
-        url (str): URL to parse
-        headers (dict): Request headers
+        url: URL to parse
+        headers: Request headers
 
     Returns:
-        tuple: (media_url, file_extension) or (None, None) if not found
+        Tuple of (media_url, file_extension) or (None, None) if not found
     """
     try:
         response = requests.get(url, headers=headers, timeout=10)
@@ -103,7 +107,7 @@ def _parse_html_for_media(url, headers):
         og_video_tag = soup.find("meta", property="og:video")
         og_image_tag = soup.find("meta", property="og:image")
 
-        if og_video_tag:
+        if og_video_tag and isinstance(og_video_tag, Tag):
             try:
                 content = og_video_tag.get("content")
                 if content:
@@ -111,28 +115,28 @@ def _parse_html_for_media(url, headers):
             except (AttributeError, TypeError):
                 pass
 
-        if og_image_tag:
+        if og_image_tag and isinstance(og_image_tag, Tag):
             try:
                 content = og_image_tag.get("content")
                 if content:
                     return str(content), None
             except (AttributeError, TypeError):
                 pass
-        else:
-            return None, None
+
+        return None, None
     except (requests.exceptions.RequestException, Exception):
         return None, None
 
 
-def _get_accept_header(file_extension, media_url):
+def _get_accept_header(file_extension: str, media_url: str) -> str:
     """Get appropriate Accept header based on file extension and URL.
 
     Args:
-        file_extension (str): File extension
-        media_url (str): Media URL
+        file_extension: File extension
+        media_url: Media URL
 
     Returns:
-        str: Accept header value
+        Accept header value
     """
     media_url_lower = media_url.lower()
 
@@ -149,18 +153,20 @@ def _get_accept_header(file_extension, media_url):
         return "image/*"
 
 
-def _save_media_file(content, media_path, sub, submission_id, file_extension):
+def _save_media_file(
+    content: bytes, media_path: str, sub: str, submission_id: str, file_extension: str
+) -> bool:
     """Save media content to file.
 
     Args:
-        content (bytes): Media content
-        media_path (str): Base path for media files
-        sub (str): Subreddit name
-        submission_id (str): Submission ID
-        file_extension (str): File extension
+        content: Media content
+        media_path: Base path for media files
+        sub: Subreddit name
+        submission_id: Submission ID
+        file_extension: File extension
 
     Returns:
-        bool: True if saved successfully, False otherwise
+        True if saved successfully, False otherwise
     """
     if not content or len(content) == 0:
         return False
@@ -174,32 +180,41 @@ def _save_media_file(content, media_path, sub, submission_id, file_extension):
         return False
 
 
-def download_media(submission, creds, media_path, sub, is_direct_media):
+def download_media(
+    submission: praw.models.Submission,
+    creds: Dict[str, str],
+    media_path: str,
+    sub: str,
+    is_direct_media: bool,
+) -> bool:
     """Download a single media item from a Reddit submission.
     If not a direct media link, attempts to parse HTML for og:video or og:image tags.
 
     Args:
         submission: Reddit submission object
-        creds (dict): Reddit API credentials
-        media_path (str): Path to save media
-        sub (str): Subreddit name
-        is_direct_media (bool): True if the URL is identified as a direct media link.
+        creds: Reddit API credentials
+        media_path: Path to save media
+        sub: Subreddit name
+        is_direct_media: True if the URL is identified as a direct media link.
 
     Returns:
-        bool: True if media was downloaded successfully, False otherwise
+        True if media was downloaded successfully, False otherwise
     """
-    original_url = submission.url
-    media_url_to_download = original_url
-    file_extension = None
+    original_url: str = submission.url
+    media_url_to_download: str = original_url
+    file_extension: Optional[str] = None
 
-    headers = {"User-Agent": creds["user_agent"]}
+    headers: Dict[str, str] = {"User-Agent": creds["user_agent"]}
 
     # Handle non-direct media URLs by parsing HTML
     if not is_direct_media:
         result = _parse_html_for_media(original_url, headers)
         if result == (None, None):
             return False
-        media_url_to_download, file_extension = result
+        parsed_url, parsed_extension = result
+        if parsed_url is not None:
+            media_url_to_download = parsed_url
+            file_extension = parsed_extension
 
     # Determine file extension if not already set
     if not file_extension:
@@ -221,14 +236,16 @@ def download_media(submission, creds, media_path, sub, is_direct_media):
         return False
 
 
-def process_subreddit(reddit, creds, sub, media_path):
+def process_subreddit(
+    reddit: praw.Reddit, creds: Dict[str, str], sub: str, media_path: str
+) -> None:
     """Process a single subreddit and download media.
 
     Args:
         reddit: Authenticated Reddit instance
-        creds (dict): Reddit API credentials
-        sub (str): Subreddit name
-        media_path (str): Path to save media
+        creds: Reddit API credentials
+        sub: Subreddit name
+        media_path: Path to save media
     """
     subreddit = reddit.subreddit(sub)
     print(f"\nDownloading media from r/{sub}...")
@@ -262,7 +279,7 @@ def process_subreddit(reddit, creds, sub, media_path):
     print(f"✔️  Complete: saved {count} media items (scanned {posts_checked} posts)")
 
 
-def main():
+def main() -> None:
     """Main function to run the Reddit image scraper."""
     # Path to save images
     dir_path = os.path.dirname(

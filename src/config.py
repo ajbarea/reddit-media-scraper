@@ -5,15 +5,17 @@ This file contains all configurable variables that are not sensitive credentials
 For Reddit API credentials, see .env file.
 """
 
+from typing import List
+
 # File and directory settings
-TOKEN_FILE = "token.pickle"
-SUB_LIST_FILE = "data/subreddits.csv"
-IMAGES_FOLDER = "data/downloads"
+TOKEN_FILE: str = "token.pickle"
+SUB_LIST_FILE: str = "data/subreddits.csv"
+IMAGES_FOLDER: str = "data/downloads"
 
 # Reddit scraping settings
-POST_SEARCH_AMOUNT = 3
-SUBREDDIT_LIMIT = 100  # Maximum posts to check per subreddit
-SAFETY_LIMIT = 100  # Maximum posts to check before giving up
+POST_SEARCH_AMOUNT: int = 3
+SUBREDDIT_LIMIT: int = 100  # Maximum posts to check per subreddit
+SAFETY_LIMIT: int = 100  # Maximum posts to check before giving up
 
 # Media processing settings
-SUPPORTED_MEDIA_FORMATS = ["jpg", "jpeg", "png", "gif", "mp4", "webm"]
+SUPPORTED_MEDIA_FORMATS: List[str] = ["jpg", "jpeg", "png", "gif", "mp4", "webm"]

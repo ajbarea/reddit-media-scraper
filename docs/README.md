@@ -1,75 +1,252 @@
-# Reddit Image Scraper
+# Reddit Media Scraper
 
-[![Clarity Coders YouTube](https://i.imgur.com/sG7xxyc.png)](https://youtu.be/HubXt90MLfI)
+A Python application for downloading images and videos from Reddit subreddits with advanced media detection and AWS S3 integration support.
 
-## Create a reddit account
+## Features
 
-- Signup for a reddit account.
-- Select the "Are you a developer? Create an app button" [on Reddit's app preferences page](https://reddit.com/prefs/apps).
-- Give you program a name and a redirect URL(<http://localhost>).
-- On the final screen note your client id and secret.
+- **Multi-format Support**: Downloads images (JPG, PNG, GIF, WebP, etc.) and videos (MP4, WebM, etc.)
+- **Smart Media Detection**: Parses HTML pages to find embedded media using Open Graph tags
+- **Configurable Settings**: Easily customize download behavior through configuration files
+- **Robust Error Handling**: Comprehensive error handling and logging
+- **AWS Integration**: Optional S3 upload functionality with web interface
+- **Type Safety**: Full type hints and MyPy support
+- **Testing**: Comprehensive test suite with pytest
 
-| Create Account | Access Developer | Name | ID and secret |
-| --- | --- | --- | --- |
-| ![Create Account](https://i.imgur.com/l5tWhOW.png) | ![Access Developer](https://i.imgur.com/Ir7Nqx6.png) | ![Name](https://i.imgur.com/1hoKGvH.png) | ![ID and secret](https://i.imgur.com/JmH5vBn.png) |
+## Prerequisites
 
-## Setup Environment File
+Before using this Reddit media scraper, you'll need to set up the following:
 
-Create a `.env` file in the root directory with your Reddit API credentials:
+### Reddit API Access
+
+1. **Create a Reddit Account**: If you don't have one, sign up at [reddit.com](https://www.reddit.com)
+2. **Create a Reddit App**:
+   - Go to [Reddit App Preferences](https://www.reddit.com/prefs/apps)
+   - Click "Create App" or "Create Another App"
+   - Choose "script" as the app type
+   - Fill in the required fields:
+     - **Name**: Your app name (e.g., "Media Scraper")
+     - **Description**: Brief description of your app
+     - **Redirect URI**: Use `http://localhost:8080` (required but not used)
+   - Click "Create app"
+3. **Note Your Credentials**:
+   - **Client ID**: Found under your app name (short string)
+   - **Client Secret**: The "secret" field (longer string)
+
+### AWS Account (Optional)
+
+If you plan to store media in AWS S3 or use other AWS services:
+
+1. **Create an AWS Account**: Sign up at [aws.amazon.com](https://aws.amazon.com)
+2. **Set Up IAM User** (recommended for security):
+   - Go to AWS IAM Console
+   - Create a new user with programmatic access
+   - Attach appropriate policies (e.g., S3FullAccess if storing media)
+   - Save your Access Key ID and Secret Access Key
+3. **Set Up S3 Bucket** (if using S3 features):
+   - Create a new S3 bucket for media storage
+   - Configure bucket permissions for public read if needed
+
+## Installation
+
+### 1. Clone the Repository
+
+```bash
+git clone https://github.com/yourusername/reddit-media-scraper.git
+cd reddit-media-scraper
+```
+
+### 2. Set Up Virtual Environment
+
+```bash
+python -m venv .venv
+.venv/Scripts/activate  # Windows
+# or
+source .venv/bin/activate  # macOS/Linux
+
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 3. Configure Environment
+
+Copy the example environment file and fill in your credentials:
+
+```bash
+cp .env.example .env
+```
+
+Edit the `.env` file with your Reddit API credentials:
 
 ```properties
 # Reddit API Credentials
 REDDIT_CLIENT_ID=your_client_id_here
 REDDIT_CLIENT_SECRET=your_client_secret_here
-REDDIT_USER_AGENT=python:reddit-image-scraper:1.0 (by u/your_username)
+REDDIT_USER_AGENT=python:reddit-media-scraper:1.0 (by u/your_username)
 REDDIT_USERNAME=your_username_here
 REDDIT_PASSWORD=your_password_here
+
+# AWS Configuration (Optional)
+AWS_ACCESS_KEY_ID=your_aws_access_key_id_here
+AWS_SECRET_ACCESS_KEY=your_aws_secret_access_key_here
+AWS_REGION=your_aws_region_here
+AWS_S3_BUCKET=your_s3_bucket_name_here
 ```
 
-Replace the placeholder values with your actual Reddit API credentials obtained from the previous step.
+### 4. Configure Subreddits
 
-## Setup Virtual Environment
+Edit `data/subreddits.csv` and add the subreddits you want to scrape (one per line):
 
-Before running the script, it's recommended to set up a virtual environment to manage dependencies:
+```csv
+earthporn
+pics
+funny
+gifs
+```
+
+## Usage
+
+### Basic Usage
+
+Run the scraper from the project root:
 
 ```bash
-python -m venv .venv
-.venv/Scripts/activate  # Windows
-python -m pip install --upgrade pip
-pip install -r requirements.txt
+python -m src.main
 ```
 
-## Run download script
+Or use the VS Code task:
 
-Run from the src directory:
+- Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (macOS)
+- Type "Tasks: Run Task"
+- Select "Run Reddit Image Scraper"
 
-```bash
-cd src
-python main.py
-```
+### What the Script Does
 
-- Add any subs you want to download to the data/subreddits.csv one per line.
-- Run the main script from the src directory
-- The first time you run the script it will ask you for details. Note you don't need to enter a user name or password if you don't plan on posting.
-- The script will create a token.pickle file so you don't have to enter them again. If you mess up your credentials just delete the pickle file and it will ask for them again.
-- The script will create an images folder and fill it with images it finds.
+1. **Authentication**: Loads credentials from `.env` file and authenticates with Reddit API
+2. **Token Management**: Creates and saves a `token.pickle` file for session persistence
+3. **Media Discovery**: Searches through subreddit posts for media content
+4. **Smart Detection**: Identifies direct media links and parses HTML for embedded media
+5. **Download**: Saves media files to `data/downloads/` with organized naming
+6. **Progress Tracking**: Shows real-time download progress and statistics
+
+### AWS S3 Upload (Optional)
+
+If you've configured AWS credentials, you can use the web interface to upload downloaded media to S3:
+
+1. Open `frontend/index.html` in your browser
+2. Configure your AWS Cognito Identity Pool ID in the HTML file
+3. Select and upload media files directly to your S3 bucket
 
 ## Configuration
 
-The application uses two configuration files:
+The application uses multiple configuration files:
 
-- **`.env`**: Contains private Reddit API credentials (client ID, secret, username, password)
-- **`config.py`**: Contains all other configurable settings like:
-  - Number of posts to search (`POST_SEARCH_AMOUNT`)
-  - Supported image formats
-  - File and folder names
-  - Image processing settings
+### Environment Variables (`.env`)
 
-You can modify `config.py` to customize the scraper's behavior without touching the main code.
+- **Reddit API**: Client ID, secret, username, password
+- **AWS**: Access keys, region, S3 bucket name, Cognito pool ID
 
-## Need more help?
+### Application Settings (`src/config.py`)
 
-- YouTube [Clarity Coders](https://www.youtube.com/claritycoders)
-- Chat with me! [Discord](https://discord.gg/cAWW5qq)
+```python
+# Media download settings
+POST_SEARCH_AMOUNT = 3          # Media items to download per subreddit
+SUBREDDIT_LIMIT = 100           # Maximum posts to check per subreddit
+SAFETY_LIMIT = 100              # Safety limit to prevent infinite loops
 
-[![Discord](https://img.shields.io/discord/709518323720912956?label=Discord&logo=discord&logoColor=ffffff&labelColor=7289DA&color=2c2f33)](https://discord.gg/cAWW5qq)
+# File and directory settings
+IMAGES_FOLDER = "data/downloads" # Download directory
+SUB_LIST_FILE = "data/subreddits.csv" # Subreddit list file
+
+# Supported media formats
+SUPPORTED_MEDIA_FORMATS = ["jpg", "jpeg", "png", "gif", "mp4", "webm"]
+```
+
+## Project Structure
+
+```text
+reddit-media-scraper/
+├── src/
+│   ├── __init__.py
+│   ├── main.py              # Main application entry point
+│   ├── config.py            # Configuration settings
+│   └── utils/
+│       ├── __init__.py
+│       ├── reddit_auth.py   # Reddit authentication utilities
+│       └── file_operations.py # File and URL handling utilities
+├── data/
+│   ├── subreddits.csv       # List of subreddits to scrape
+│   └── downloads/           # Downloaded media files
+├── frontend/
+│   └── index.html           # AWS S3 upload interface
+├── tests/
+│   ├── __init__.py
+│   └── test_main.py         # Test suite
+├── docs/
+│   └── README.md            # This file
+├── .env.example             # Environment template
+├── .gitignore              # Git ignore rules
+├── requirements.txt         # Python dependencies
+├── pyproject.toml          # Project configuration
+└── token.pickle            # Reddit session token (auto-generated)
+```
+
+## Development
+
+### Running Tests
+
+```bash
+# Run all tests
+pytest
+
+# Run with coverage
+pytest --cov=src
+
+# Run specific test file
+pytest tests/test_main.py
+```
+
+### Type Checking
+
+```bash
+# Run MyPy type checking
+mypy src/
+
+# Check specific file
+mypy src/main.py
+```
+
+### Code Quality
+
+```bash
+# Format code with Black
+black src/ tests/
+
+# Sort imports with isort
+isort src/ tests/
+
+# Lint with flake8
+flake8 src/ tests/
+```
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Authentication Failed**:
+   - Verify your Reddit credentials in `.env`
+   - Check that your Reddit app type is set to "script"
+   - Ensure 2FA is disabled or use an app password
+
+2. **No Media Found**:
+   - Check that subreddits exist and are accessible
+   - Verify subreddit names in `data/subreddits.csv`
+   - Some subreddits may have limited media content
+
+3. **Download Failures**:
+   - Check internet connection
+   - Verify media URLs are accessible
+   - Some media may be restricted or require authentication
+
+4. **Permission Errors**:
+   - Ensure write permissions to `data/downloads/` directory
+   - Run with appropriate user permissions

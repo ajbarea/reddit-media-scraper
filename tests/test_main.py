@@ -190,11 +190,20 @@ class TestHelperFunctions:
         mock_soup_instance = MagicMock()
         mock_soup.return_value = mock_soup_instance
 
-        mock_video_tag = MagicMock()
+        # Create a mock that passes isinstance(tag, Tag)
+        from bs4 import Tag
+
+        mock_video_tag = MagicMock(spec=Tag)
         mock_video_tag.get.return_value = "https://example.com/video.mp4"
-        mock_soup_instance.find.side_effect = lambda tag, attrs=None, **kwargs: (
-            mock_video_tag if kwargs.get("property") == "og:video" else None
-        )
+
+        def find_side_effect(tag, property=None, **kwargs):
+            if tag == "meta" and property == "og:video":
+                return mock_video_tag
+            elif tag == "meta" and property == "og:image":
+                return None
+            return None
+
+        mock_soup_instance.find.side_effect = find_side_effect
 
         result = _parse_html_for_media(
             "https://example.com/page", {"User-Agent": "test"}
@@ -214,14 +223,16 @@ class TestHelperFunctions:
         mock_soup_instance = MagicMock()
         mock_soup.return_value = mock_soup_instance
 
-        mock_image_tag = MagicMock()
+        # Create a mock that passes isinstance(tag, Tag)
+        from bs4 import Tag
+
+        mock_image_tag = MagicMock(spec=Tag)
         mock_image_tag.get.return_value = "https://example.com/image.jpg"
 
-        def find_side_effect(tag, attrs=None, **kwargs):
-            property_value = kwargs.get("property")
-            if property_value == "og:video":
+        def find_side_effect(tag, property=None, **kwargs):
+            if tag == "meta" and property == "og:video":
                 return None
-            elif property_value == "og:image":
+            elif tag == "meta" and property == "og:image":
                 return mock_image_tag
             return None
 
