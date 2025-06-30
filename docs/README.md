@@ -51,7 +51,7 @@ If you plan to store media in AWS S3 or use other AWS services:
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/yourusername/reddit-media-scraper.git
+git clone https://github.com/ajbarea/reddit-media-scraper.git
 cd reddit-media-scraper
 ```
 
@@ -169,10 +169,13 @@ reddit-media-scraper/
 │   ├── __init__.py
 │   ├── main.py              # Main application entry point
 │   ├── config.py            # Configuration settings
+│   ├── py.typed             # Type checking marker file
 │   └── utils/
 │       ├── __init__.py
 │       ├── reddit_auth.py   # Reddit authentication utilities
-│       └── file_operations.py # File and URL handling utilities
+│       ├── file_operations.py # File and URL handling utilities
+│       ├── media_parsing.py # HTML parsing and media detection
+│       └── media_download.py # Media download utilities
 ├── data/
 │   ├── subreddits.csv       # List of subreddits to scrape
 │   └── downloads/           # Downloaded media files
@@ -187,6 +190,8 @@ reddit-media-scraper/
 ├── .gitignore              # Git ignore rules
 ├── requirements.txt         # Python dependencies
 ├── pyproject.toml          # Project configuration
+├── setup.cfg               # Code quality configuration  
+├── mypy.ini                # Type checking configuration
 └── token.pickle            # Reddit session token (auto-generated)
 ```
 

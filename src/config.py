@@ -19,3 +19,6 @@ SAFETY_LIMIT: int = 100  # Maximum posts to check before giving up
 
 # Media processing settings
 SUPPORTED_MEDIA_FORMATS: List[str] = ["jpg", "jpeg", "png", "gif", "mp4", "webm"]
+
+# For images only
+# SUPPORTED_MEDIA_FORMATS: List[str] = ["jpg", "jpeg", "png", "gif"]

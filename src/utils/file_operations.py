@@ -67,14 +67,14 @@ def validate_path(path: PathLike) -> Path:
         raise TypeError(f"Path must be str or PathLike, got {type(path).__name__}")
 
     try:
-        normalized_path = Path(path).resolve()
-
-        # Check for potential security issues (path traversal)
-        if str(normalized_path).count("..") > 0:
+        # Check for potential security issues (path traversal) before resolving
+        path_str = str(path)
+        if ".." in path_str:
             raise FileOperationError(
                 f"Path contains parent directory references: {path}", path
             )
 
+        normalized_path = Path(path).resolve()
         return normalized_path
 
     except (OSError, ValueError) as e:
@@ -273,34 +273,41 @@ def is_supported_extension(extension: str) -> bool:
 
 
 def get_file_type(extension: str) -> Optional[str]:
-    """Determine if a file extension is for image or video content.
+    """Get file type category for a given extension.
 
     Args:
-        extension: File extension to classify
+        extension: File extension without dot
 
     Returns:
         'image', 'video', or None if unsupported
 
-    Raises:
-        TypeError: If extension is not a string
-
     Example:
-        >>> get_file_type("jpg")
+        >>> get_file_type('jpg')
         'image'
-        >>> get_file_type("mp4")
+        >>> get_file_type('mp4')
         'video'
-        >>> get_file_type("xyz")
-        None
     """
-    if not isinstance(extension, str):
-        raise TypeError(f"Extension must be a string, got {type(extension).__name__}")
+    extension = extension.lower()
 
-    clean_ext = extension.lstrip(".").lower().strip()
-    normalized_ext = EXTENSION_MAPPING.get(clean_ext, clean_ext)
-
-    if normalized_ext in SUPPORTED_IMAGE_EXTENSIONS:
+    if extension in SUPPORTED_IMAGE_EXTENSIONS:
         return "image"
-    elif normalized_ext in SUPPORTED_VIDEO_EXTENSIONS:
+    elif extension in SUPPORTED_VIDEO_EXTENSIONS:
         return "video"
     else:
         return None
+
+
+def get_project_root_path() -> str:
+    """Get the project root directory path.
+
+    Returns:
+        Absolute path to the project root directory
+
+    Example:
+        >>> root = get_project_root_path()
+        >>> print(root)  # /path/to/project/root
+    """
+    # Get the directory containing this file (src/utils/)
+    current_file_dir = os.path.dirname(os.path.realpath(__file__))
+    # Go up two levels: utils -> src -> project_root
+    return os.path.dirname(os.path.dirname(current_file_dir))
