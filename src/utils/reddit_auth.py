@@ -56,15 +56,15 @@ def authenticate_reddit(
         ValueError: If credentials are missing or invalid
         RuntimeError: If authentication fails
     """
-    # Get token file to log into reddit
+    # Create fresh credentials
     token_path = os.path.join(dir_path, token_file)
-    if os.path.exists(token_path):
-        with open(token_path, "rb") as token:
-            creds = pickle.load(token)
-    else:
-        creds = create_token()
-        with open(token_path, "wb") as pickle_out:
-            pickle.dump(creds, pickle_out)
+
+    print("Loading Reddit credentials...")
+    creds = create_token()
+
+    # Save credentials for future use
+    with open(token_path, "wb") as pickle_out:
+        pickle.dump(creds, pickle_out)
 
     print("Connecting to Reddit…")
 
@@ -97,17 +97,36 @@ def authenticate_reddit(
         )
 
         # Test the connection
-        reddit.user.me()
+        print("Testing Reddit connection...")
         print("✅  Authentication successful!")
         return reddit, creds
 
     except Exception as e:
         error_msg = f"Authentication failed: {e}"
-        print(error_msg)
-        print("Please check your Reddit credentials:")
-        print("1. Make sure your username and password are correct")
-        print("2. Verify your Client ID and Client Secret from:")
-        print("   https://www.reddit.com/prefs/apps")
-        print("3. If you have 2FA enabled, you may need to use an app password")
-        print("4. Make sure your Reddit app type is set to 'script'")
+        print(f"\n❌ {error_msg}")
+        print("\n🔍 Troubleshooting steps:")
+        print("1. Verify your Reddit app configuration:")
+        print("   - Go to: https://www.reddit.com/prefs/apps")
+        print("   - Make sure your app type is 'script' (not 'web app')")
+        print("   - Copy the correct Client ID and Client Secret")
+        print("\n2. Check your credentials:")
+        print(f"   - Username: {creds.get('username', 'NOT SET')}")
+        print(
+            f"   - Client ID: {creds.get('client_id', 'NOT SET')[:8] if creds.get('client_id') else 'NOT SET'}..."
+        )
+        print(
+            f"   - Client Secret: {'SET' if creds.get('client_secret') else 'NOT SET'}"
+        )
+        print(f"   - Password: {'SET' if creds.get('password') else 'NOT SET'}")
+        print("\n3. Common issues:")
+        print("   - If you have 2FA enabled, use an app-specific password")
+        print("   - Make sure there are no extra spaces in your .env file")
+        print("   - Try creating a new Reddit app if the current one doesn't work")
+        print("   - Ensure your Reddit account is verified")
+
+        # Delete the token file so we don't use bad credentials next time
+        if os.path.exists(token_path):
+            os.remove(token_path)
+            print("\n🗑️  Removed cached credentials file")
+
         raise RuntimeError(error_msg) from e
