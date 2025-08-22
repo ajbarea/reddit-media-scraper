@@ -7,6 +7,7 @@ from src.config import (
     POST_SEARCH_AMOUNT,
     SAFETY_LIMIT,
     SUB_LIST_FILE,
+    USER_LIST_FILE,
     SUBREDDIT_LIMIT,
     SUPPORTED_MEDIA_FORMATS,
     TOKEN_FILE,
@@ -53,7 +54,7 @@ def main() -> None:
 
     # Process user submissions
     try:
-        user_list_path = os.path.join(dir_path, "data/usersubmissions.csv")
+        user_list_path = os.path.join(dir_path, USER_LIST_FILE)
         user_list = load_user_list(user_list_path)
         print("Processing user submissions...")
         for username in user_list:
@@ -63,7 +64,6 @@ def main() -> None:
                     username=username,
                     creds=creds,
                     media_path=image_path,
-                    is_direct_media=True,
                     supported_media_formats=SUPPORTED_MEDIA_FORMATS,
                     limit=POST_SEARCH_AMOUNT,
                 )

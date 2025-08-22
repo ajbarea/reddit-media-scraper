@@ -11,8 +11,7 @@ def process_user_submissions(
     username: str,
     creds: Dict[str, str],
     media_path: str,
-    is_direct_media: bool = True,
-    supported_media_formats: Optional[List[str]] = None,
+    supported_media_formats: list,
     limit: int = 100
 ) -> List[Tuple[str, Optional[str]]]:
     """
@@ -23,7 +22,6 @@ def process_user_submissions(
         username: Reddit username to process
         creds: Reddit API credentials (must include 'user_agent')
         media_path: Path to save media files
-        is_direct_media: Whether to treat URLs as direct media links
         supported_media_formats: List of allowed file extensions
         limit: Max number of submissions to process
 
@@ -38,6 +36,8 @@ def process_user_submissions(
         submissions = redditor.submissions.new(limit=limit)
         for i, submission in enumerate(submissions, 1):
             print(f"[UserSubmissions] Processing submission {i}: {submission.id} - {submission.title}")
+            url_lower = submission.url.lower()
+            is_direct_media = any(f".{fmt}" in url_lower for fmt in supported_media_formats) if supported_media_formats else True
             try:
                 success, ext = download_media(
                     submission,

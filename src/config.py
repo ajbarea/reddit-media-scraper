@@ -10,6 +10,7 @@ from typing import List
 # File and directory settings
 TOKEN_FILE: str = "token.pickle"
 SUB_LIST_FILE: str = "data/subreddits.csv"
+USER_LIST_FILE: str = "data/usersubmissions.csv"
 IMAGES_FOLDER: str = "data/downloads"
 
 # Reddit scraping settings

@@ -37,8 +37,12 @@ def save_media_file(
     if not content or len(content) == 0:
         return False
 
+    import os
     try:
-        filename = f"{media_path}{sub}-{submission_id}.{file_extension}"
+        # Ensure subfolder exists
+        subfolder_path = os.path.join(media_path, sub)
+        os.makedirs(subfolder_path, exist_ok=True)
+        filename = os.path.join(subfolder_path, f"{sub}-{submission_id}.{file_extension}")
         with open(filename, "wb") as f:
             f.write(content)
         return True
@@ -91,7 +95,9 @@ def download_media(
         parsed_url, parsed_extension = result
         if parsed_url is not None:
             media_url_to_download = parsed_url
+            print("Media URL found:", media_url_to_download)
             file_extension = parsed_extension
+            print("File extension found:", file_extension)
 
     # Determine file extension if not already set
     if not file_extension:
