@@ -13,7 +13,7 @@ SUB_LIST_FILE: str = "data/subreddits.csv"
 IMAGES_FOLDER: str = "data/downloads"
 
 # Reddit scraping settings
-POST_SEARCH_AMOUNT: int = 3
+POST_SEARCH_AMOUNT: int = 10
 SUBREDDIT_LIMIT: int = 100  # Maximum posts to check per subreddit
 SAFETY_LIMIT: int = 100  # Maximum posts to check before giving up
 

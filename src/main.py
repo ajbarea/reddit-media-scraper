@@ -13,7 +13,9 @@ from src.config import (
 )
 from src.utils.file_operations import create_folder, get_project_root_path
 from src.utils.reddit_auth import authenticate_reddit
+
 from src.utils.subreddit_processor import load_subreddit_list, process_subreddit
+from src.utils.usersubmissions_processor import load_user_list, process_user_submissions
 
 
 def main() -> None:
@@ -26,22 +28,49 @@ def main() -> None:
     # Authenticate with Reddit
     reddit, creds = authenticate_reddit(dir_path, TOKEN_FILE)
 
+
     # Load and process subreddits
-    sub_list_path = os.path.join(dir_path, SUB_LIST_FILE)
-    subreddit_list = load_subreddit_list(sub_list_path)
+    try:
+        sub_list_path = os.path.join(dir_path, SUB_LIST_FILE)
+        subreddit_list = load_subreddit_list(sub_list_path)
+        print("Processing subreddits...")
+        for sub in subreddit_list:
+            try:
+                process_subreddit(
+                    reddit=reddit,
+                    creds=creds,
+                    sub=sub,
+                    media_path=image_path,
+                    post_search_amount=POST_SEARCH_AMOUNT,
+                    subreddit_limit=SUBREDDIT_LIMIT,
+                    safety_limit=SAFETY_LIMIT,
+                    supported_media_formats=SUPPORTED_MEDIA_FORMATS,
+                )
+            except Exception as e:
+                print(f"Error processing subreddit '{sub}': {e}")
+    except Exception as e:
+        print(f"Error loading or processing subreddits: {e}")
 
-    for sub in subreddit_list:
-        process_subreddit(
-            reddit=reddit,
-            creds=creds,
-            sub=sub,
-            media_path=image_path,
-            post_search_amount=POST_SEARCH_AMOUNT,
-            subreddit_limit=SUBREDDIT_LIMIT,
-            safety_limit=SAFETY_LIMIT,
-            supported_media_formats=SUPPORTED_MEDIA_FORMATS,
-        )
-
+    # Process user submissions
+    try:
+        user_list_path = os.path.join(dir_path, "data/usersubmissions.csv")
+        user_list = load_user_list(user_list_path)
+        print("Processing user submissions...")
+        for username in user_list:
+            try:
+                process_user_submissions(
+                    reddit=reddit,
+                    username=username,
+                    creds=creds,
+                    media_path=image_path,
+                    is_direct_media=True,
+                    supported_media_formats=SUPPORTED_MEDIA_FORMATS,
+                    limit=POST_SEARCH_AMOUNT,
+                )
+            except Exception as e:
+                print(f"Error processing user '{username}': {e}")
+    except Exception as e:
+        print(f"Error loading or processing user submissions: {e}")
 
 if __name__ == "__main__":
     main()
